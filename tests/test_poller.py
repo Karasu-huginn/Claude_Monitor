@@ -13,9 +13,9 @@ def test_read_credentials_returns_token(tmp_path):
     p.write_text(json.dumps({"claudeAiOauth": {"accessToken": "sk-ant-oat01-test"}}))
     assert read_credentials(p) == "sk-ant-oat01-test"
 
-def test_read_credentials_raises_on_missing_file():
+def test_read_credentials_raises_on_missing_file(tmp_path):
     with pytest.raises(FileNotFoundError):
-        read_credentials(Path("/nonexistent/.credentials.json"))
+        read_credentials(tmp_path / "no_such_file.json")
 
 def test_read_credentials_raises_on_wrong_schema(tmp_path):
     p = tmp_path / ".credentials.json"
@@ -36,6 +36,14 @@ def test_parse_response_raises_on_missing_five_hour():
     with pytest.raises(KeyError):
         parse_response({})
 
+def test_parse_response_raises_on_missing_utilization():
+    with pytest.raises(KeyError):
+        parse_response({"five_hour": {"reset_at": "2026-04-02T16:00:00Z"}})
+
+def test_parse_response_raises_on_missing_reset_at():
+    with pytest.raises(KeyError):
+        parse_response({"five_hour": {"utilization": 0.5}})
+
 
 # --- format_countdown ---
 
@@ -44,7 +52,7 @@ def test_format_countdown_hours_and_minutes():
     assert format_countdown(reset_at) == "2h 14m"
 
 def test_format_countdown_minutes_only():
-    reset_at = datetime.now(timezone.utc) + timedelta(minutes=7, seconds=45)
+    reset_at = datetime.now(timezone.utc) + timedelta(minutes=7, seconds=55)
     assert format_countdown(reset_at) == "7m"
 
 def test_format_countdown_expired_returns_now():
