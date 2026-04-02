@@ -244,10 +244,12 @@ class VisualizerWindow(QWidget):
         self._dot_label.setStyleSheet(f"color: #e17055; font-size: 9px; background: transparent;")
 
         if msg == "offline":
+            self._is_loading = False
             # Keep last known percentage; only footer changes
             self._used_label.setText("offline")
             self._used_label.setStyleSheet("color: #e17055; font-size: 11px; background: transparent;")
         elif msg == "rate limited":
+            self._is_loading = False
             self._used_label.setText("rate limited — retrying in 5m")
             self._used_label.setStyleSheet("color: #fdcb6e; font-size: 11px; background: transparent;")
         else:
