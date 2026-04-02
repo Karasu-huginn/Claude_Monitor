@@ -58,4 +58,54 @@ def get_bar_color(utilization: float) -> str:
 
 
 class Poller(QThread):
-    pass  # implemented in Task 4
+    """Background thread that polls the usage API and emits signals."""
+
+    # Emitted on success: (utilization float, reset_at datetime)
+    data_ready = pyqtSignal(float, object)
+    # Emitted on any error: short human-readable message string
+    error = pyqtSignal(str)
+
+    def __init__(self, credentials_path: Path = CREDENTIALS_PATH) -> None:
+        super().__init__()
+        self._credentials_path = credentials_path
+        self._running = True
+
+    def run(self) -> None:
+        while self._running:
+            sleep_seconds = POLL_INTERVAL
+            try:
+                token = read_credentials(self._credentials_path)
+                resp = requests.get(
+                    USAGE_URL,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                        "User-Agent": "claude-tokens-visualizer/1.0",
+                    },
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    utilization, reset_at = parse_response(resp.json())
+                    self.data_ready.emit(utilization, reset_at)
+                elif resp.status_code == 429:
+                    sleep_seconds = BACKOFF_INTERVAL
+                    self.error.emit("rate limited")
+                elif resp.status_code == 401:
+                    self.error.emit("auth error — reopen Claude Code")
+                else:
+                    self.error.emit(f"HTTP {resp.status_code}")
+            except FileNotFoundError:
+                self.error.emit("auth error — reopen Claude Code")
+            except requests.RequestException:
+                self.error.emit("offline")
+            except Exception as e:
+                self.error.emit(str(e))
+
+            # Sleep in 1-second ticks so stop() is responsive
+            for _ in range(sleep_seconds):
+                if not self._running:
+                    return
+                time.sleep(1)
+
+    def stop(self) -> None:
+        self._running = False
