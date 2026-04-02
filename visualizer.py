@@ -117,6 +117,7 @@ class VisualizerWindow(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(BG))
         painter.drawRoundedRect(self.rect(), RADIUS, RADIUS)
+        painter.end()
 
     # ------------------------------------------------------------------
     # Layout
@@ -181,8 +182,11 @@ class VisualizerWindow(QWidget):
         root.addLayout(footer)
 
     def _position_bottom_right(self) -> None:
-        screen = QApplication.primaryScreen().availableGeometry()
-        self.move(screen.right() - WIDTH - MARGIN, screen.bottom() - HEIGHT - MARGIN)
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            return
+        geo = screen.availableGeometry()
+        self.move(geo.right() - WIDTH - MARGIN, geo.bottom() - HEIGHT - MARGIN)
 
     # ------------------------------------------------------------------
     # Timers
@@ -240,21 +244,23 @@ class VisualizerWindow(QWidget):
         self._updated_label.setText(f"updated {datetime.now().strftime('%H:%M:%S')}")
 
     def _on_error(self, msg: str) -> None:
-        self._bar.set_error()
         self._dot_label.setStyleSheet(f"color: #e17055; font-size: 9px; background: transparent;")
 
         if msg == "offline":
             self._is_loading = False
-            # Keep last known percentage; only footer changes
+            # Keep last known bar and percentage; only subtitle changes
             self._used_label.setText("offline")
             self._used_label.setStyleSheet("color: #e17055; font-size: 11px; background: transparent;")
         elif msg == "rate limited":
             self._is_loading = False
+            # Keep last known bar and percentage; only subtitle changes
             self._used_label.setText("rate limited — retrying in 5m")
             self._used_label.setStyleSheet("color: #fdcb6e; font-size: 11px; background: transparent;")
         else:
-            # Auth error or unknown
+            # Auth error or unknown — reset the whole display
             self._is_loading = False
+            self._bar.set_error()
+            self._reset_at = None
             self._pct_label.setText("—")
             self._pct_label.setStyleSheet(f"color: {GREY}; background: transparent;")
             self._used_label.setText(msg)
