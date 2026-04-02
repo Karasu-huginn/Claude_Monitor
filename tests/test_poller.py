@@ -59,6 +59,10 @@ def test_format_countdown_expired_returns_now():
     reset_at = datetime.now(timezone.utc) - timedelta(seconds=1)
     assert format_countdown(reset_at) == "now"
 
+def test_format_countdown_less_than_one_minute():
+    reset_at = datetime.now(timezone.utc) + timedelta(seconds=30)
+    assert format_countdown(reset_at) == "<1m"
+
 
 # --- get_bar_color ---
 
