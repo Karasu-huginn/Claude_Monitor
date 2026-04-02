@@ -293,7 +293,6 @@ class VisualizerWindow(QWidget):
 
 def main() -> None:
     app = QApplication(sys.argv)
-    app.setQuitOnLastWindowClosed(True)
     window = VisualizerWindow()
     window.show()
     sys.exit(app.exec())
