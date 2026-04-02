@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -68,10 +69,10 @@ class Poller(QThread):
     def __init__(self, credentials_path: Path = CREDENTIALS_PATH) -> None:
         super().__init__()
         self._credentials_path = credentials_path
-        self._running = True
+        self._stop_event = threading.Event()
 
     def run(self) -> None:
-        while self._running:
+        while not self._stop_event.is_set():
             sleep_seconds = POLL_INTERVAL
             try:
                 token = read_credentials(self._credentials_path)
@@ -90,7 +91,7 @@ class Poller(QThread):
                 elif resp.status_code == 429:
                     sleep_seconds = BACKOFF_INTERVAL
                     self.error.emit("rate limited")
-                elif resp.status_code == 401:
+                elif resp.status_code in (401, 403):
                     self.error.emit("auth error — reopen Claude Code")
                 else:
                     self.error.emit(f"HTTP {resp.status_code}")
@@ -103,9 +104,9 @@ class Poller(QThread):
 
             # Sleep in 1-second ticks so stop() is responsive
             for _ in range(sleep_seconds):
-                if not self._running:
+                if self._stop_event.is_set():
                     return
                 time.sleep(1)
 
     def stop(self) -> None:
-        self._running = False
+        self._stop_event.set()
