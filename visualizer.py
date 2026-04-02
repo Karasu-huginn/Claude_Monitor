@@ -289,3 +289,15 @@ class VisualizerWindow(QWidget):
         self._poller.stop()
         self._poller.wait(2000)
         event.accept()
+
+
+def main() -> None:
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(True)
+    window = VisualizerWindow()
+    window.show()
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
