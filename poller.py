@@ -12,9 +12,9 @@ import requests
 from PyQt6.QtCore import QThread, pyqtSignal
 
 CREDENTIALS_PATH = Path.home() / ".claude" / ".credentials.json"
-USAGE_URL = "https://claude.ai/api/oauth/usage"
-POLL_INTERVAL = 60      # seconds between normal polls
-BACKOFF_INTERVAL = 300  # seconds to wait after a 429
+USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
+POLL_INTERVAL = 300     # seconds between normal polls (endpoint rate-limits ~5 req/token; usage only changes every few hours)
+BACKOFF_INTERVAL = 600  # seconds to wait after a 429
 
 
 def read_credentials(path: Path = CREDENTIALS_PATH) -> str:
@@ -27,8 +27,11 @@ def read_credentials(path: Path = CREDENTIALS_PATH) -> str:
 def parse_response(data: dict) -> Tuple[float, datetime]:
     """Return (utilization 0–1, reset_at UTC datetime) from the API response dict."""
     five_hour = data["five_hour"]
-    utilization = float(five_hour["utilization"])
-    reset_at = datetime.fromisoformat(five_hour["reset_at"].replace("Z", "+00:00"))
+    utilization = float(five_hour["utilization"]) / 100.0
+    resets_at = five_hour["resets_at"]
+    if resets_at is None:
+        raise ValueError("Session not started yet")
+    reset_at = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
     return utilization, reset_at
 
 
@@ -45,6 +48,14 @@ def format_countdown(reset_at: datetime) -> str:
     if hours > 0:
         return f"{hours}h {minutes}m"
     return f"{minutes}m"
+
+
+def compute_time_utilization(reset_at: datetime, session_hours: float = 5.0) -> float:
+    """Return fraction of the 5-hour session elapsed (0–1). 2h remaining → 0.60."""
+    session_seconds = session_hours * 3600
+    remaining = (reset_at - datetime.now(timezone.utc)).total_seconds()
+    remaining = max(0.0, min(remaining, session_seconds))
+    return 1.0 - remaining / session_seconds
 
 
 def get_bar_color(utilization: float) -> str:
@@ -80,6 +91,7 @@ class Poller(QThread):
                     USAGE_URL,
                     headers={
                         "Authorization": f"Bearer {token}",
+                        "anthropic-beta": "oauth-2025-04-20",
                         "Content-Type": "application/json",
                         "User-Agent": "claude-tokens-visualizer/1.0",
                     },
