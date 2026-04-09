@@ -6,13 +6,13 @@ from datetime import datetime
 from typing import Optional
 
 from PyQt6.QtCore import Qt, QTimer, QPoint, QRect
-from PyQt6.QtGui import QPainter, QColor, QFont
+from PyQt6.QtGui import QPainter, QColor
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel,
     QHBoxLayout, QVBoxLayout, QPushButton,
 )
 
-from poller import Poller, format_countdown, get_bar_color
+from poller import Poller, format_countdown, get_bar_color, compute_time_utilization
 
 BG = "#1a1a2e"
 TEXT = "#ffffff"
@@ -78,6 +78,54 @@ class ColorBar(QWidget):
         painter.end()
 
 
+CONTEXT_BAR_HEIGHT = 12
+CONTEXT_BAR_RADIUS = 6
+COMPACT_THRESHOLD = 0.80
+
+
+class ContextBar(QWidget):
+    """Thinner progress bar with a compaction threshold mark."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._utilization: float = 0.0
+        self._color: str = GREY
+        self._active: bool = False
+        self.setFixedHeight(CONTEXT_BAR_HEIGHT)
+
+    def set_value(self, utilization: float) -> None:
+        self._active = True
+        self._utilization = max(0.0, min(1.0, utilization))
+        self._color = get_bar_color(self._utilization)
+        self.update()
+
+    def paintEvent(self, _event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = self.rect()
+
+        # Track
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(TRACK))
+        painter.drawRoundedRect(rect, CONTEXT_BAR_RADIUS, CONTEXT_BAR_RADIUS)
+
+        # Fill
+        if self._active and self._utilization > 0:
+            fill_w = max(int(rect.width() * self._utilization), CONTEXT_BAR_RADIUS * 2)
+            painter.save()
+            painter.setClipRect(QRect(0, 0, fill_w, rect.height()))
+            painter.setBrush(QColor(self._color))
+            painter.drawRoundedRect(rect, CONTEXT_BAR_RADIUS, CONTEXT_BAR_RADIUS)
+            painter.restore()
+
+        # Threshold mark at 80%
+        mark_x = int(rect.width() * COMPACT_THRESHOLD)
+        painter.setPen(QColor(255, 255, 255, 80))
+        painter.drawLine(mark_x, 1, mark_x, rect.height() - 1)
+
+        painter.end()
+
+
 class VisualizerWindow(QWidget):
     """Frameless, always-on-top dashboard panel."""
 
@@ -93,7 +141,7 @@ class VisualizerWindow(QWidget):
 
         self._setup_window()
         self._build_ui()
-        self._position_bottom_right()
+        self._position_top_right()
         self._start_timers()
         self._start_poller()
 
@@ -143,31 +191,19 @@ class VisualizerWindow(QWidget):
         header.addWidget(close_btn)
         root.addLayout(header)
 
-        # --- Progress bar ---
+        # --- Tokens bar ---
+        self._tokens_label = QLabel(f"Tokens — {self.SPINNER_FRAMES[0]}")
+        self._tokens_label.setStyleSheet(f"color: {FOOTER_COLOR}; font-size: 9px; background: transparent;")
+        root.addWidget(self._tokens_label)
         self._bar = ColorBar()
         root.addWidget(self._bar)
 
-        # --- Big percentage / spinner ---
-        self._pct_label = QLabel("⠋")
-        self._pct_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        pct_font = QFont()
-        pct_font.setPointSize(34)
-        pct_font.setBold(True)
-        self._pct_label.setFont(pct_font)
-        self._pct_label.setStyleSheet(f"color: {GREY}; background: transparent;")
-        root.addWidget(self._pct_label)
-
-        # --- Subtitle row ---
-        subtitle = QHBoxLayout()
-        self._used_label = QLabel("Loading…")
-        self._used_label.setStyleSheet(f"color: {MUTED}; font-size: 11px; background: transparent;")
-        self._countdown_label = QLabel("")
-        self._countdown_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self._countdown_label.setStyleSheet(f"color: {MUTED}; font-size: 11px; background: transparent;")
-        subtitle.addWidget(self._used_label)
-        subtitle.addStretch()
-        subtitle.addWidget(self._countdown_label)
-        root.addLayout(subtitle)
+        # --- Session time bar ---
+        self._time_label = QLabel("Session time — …")
+        self._time_label.setStyleSheet(f"color: {FOOTER_COLOR}; font-size: 9px; background: transparent;")
+        root.addWidget(self._time_label)
+        self._time_bar = ColorBar()
+        root.addWidget(self._time_bar)
 
         # --- Footer ---
         footer = QHBoxLayout()
@@ -181,12 +217,12 @@ class VisualizerWindow(QWidget):
         footer.addWidget(self._dot_label)
         root.addLayout(footer)
 
-    def _position_bottom_right(self) -> None:
+    def _position_top_right(self) -> None:
         screen = QApplication.primaryScreen()
         if screen is None:
             return
         geo = screen.availableGeometry()
-        self.move(geo.right() - WIDTH - MARGIN, geo.bottom() - HEIGHT - MARGIN)
+        self.move(geo.right() - WIDTH - MARGIN, geo.top() + 32)
 
     # ------------------------------------------------------------------
     # Timers
@@ -209,11 +245,14 @@ class VisualizerWindow(QWidget):
         if not self._is_loading:
             return
         self._spinner_idx = (self._spinner_idx + 1) % len(self.SPINNER_FRAMES)
-        self._pct_label.setText(self.SPINNER_FRAMES[self._spinner_idx])
+        self._tokens_label.setText(f"Tokens — {self.SPINNER_FRAMES[self._spinner_idx]}")
 
     def _update_countdown(self) -> None:
         if self._reset_at is not None:
-            self._countdown_label.setText(f"resets in {format_countdown(self._reset_at)}")
+            self._time_label.setText(
+                f"Session time — resets in {format_countdown(self._reset_at)}"
+            )
+            self._time_bar.set_value(compute_time_utilization(self._reset_at))
 
     def _toggle_dot(self) -> None:
         self._dot_visible = not self._dot_visible
@@ -232,14 +271,11 @@ class VisualizerWindow(QWidget):
     def _on_data(self, utilization: float, reset_at: object) -> None:
         self._is_loading = False
         self._reset_at = reset_at  # type: ignore[assignment]
-        color = get_bar_color(utilization)
         pct = int(utilization * 100)
 
         self._bar.set_value(utilization)
-        self._pct_label.setText(f"{pct}%")
-        self._pct_label.setStyleSheet(f"color: {color}; background: transparent;")
-        self._used_label.setText(f"{pct}% used")
-        self._used_label.setStyleSheet(f"color: {MUTED}; font-size: 11px; background: transparent;")
+        self._tokens_label.setText(f"Tokens — {pct}% used")
+        self._tokens_label.setStyleSheet(f"color: {FOOTER_COLOR}; font-size: 9px; background: transparent;")
         self._dot_label.setStyleSheet(f"color: #00b894; font-size: 9px; background: transparent;")
         self._updated_label.setText(f"updated {datetime.now().strftime('%H:%M:%S')}")
 
@@ -248,24 +284,23 @@ class VisualizerWindow(QWidget):
 
         if msg == "offline":
             self._is_loading = False
-            # Keep last known bar and percentage; only subtitle changes
-            self._used_label.setText("offline")
-            self._used_label.setStyleSheet("color: #e17055; font-size: 11px; background: transparent;")
+            self._tokens_label.setText("Tokens — offline")
+            self._tokens_label.setStyleSheet("color: #e17055; font-size: 9px; background: transparent;")
+            # _time_bar and _time_label continue updating via _update_countdown (reset_at preserved)
         elif msg == "rate limited":
             self._is_loading = False
-            # Keep last known bar and percentage; only subtitle changes
-            self._used_label.setText("rate limited — retrying in 5m")
-            self._used_label.setStyleSheet("color: #fdcb6e; font-size: 11px; background: transparent;")
+            self._tokens_label.setText("Tokens — rate limited")
+            self._tokens_label.setStyleSheet("color: #fdcb6e; font-size: 9px; background: transparent;")
+            # _time_bar and _time_label continue updating via _update_countdown (reset_at preserved)
         else:
             # Auth error or unknown — reset the whole display
             self._is_loading = False
             self._bar.set_error()
+            self._time_bar.set_error()
             self._reset_at = None
-            self._pct_label.setText("—")
-            self._pct_label.setStyleSheet(f"color: {GREY}; background: transparent;")
-            self._used_label.setText(msg)
-            self._used_label.setStyleSheet("color: #e17055; font-size: 11px; background: transparent;")
-            self._countdown_label.setText("")
+            self._tokens_label.setText("")
+            self._tokens_label.setStyleSheet(f"color: {FOOTER_COLOR}; font-size: 9px; background: transparent;")
+            self._time_label.setText("")
 
     # ------------------------------------------------------------------
     # Mouse: drag + right-click to quit
