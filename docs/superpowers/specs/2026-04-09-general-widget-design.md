@@ -115,7 +115,9 @@ No API — purely local file reads.
 - Scan backwards from end of file for the last entry that has `message.usage.input_tokens` — that value represents the current context size.
 - The model name is in `message.model` on the same entry (e.g. `"claude-opus-4-6"`)
 
-**Fill percentage**: `input_tokens / MODEL_CONTEXT_LIMITS[model]`
+**Fill percentage**: `(input_tokens + cache_creation_input_tokens + cache_read_input_tokens) / MODEL_CONTEXT_LIMITS[model]`
+
+The `input_tokens` field alone is typically `1` because Claude Code uses prompt caching. The actual context size is the sum of all three input token fields.
 
 ### Model context limits (hardcoded)
 
