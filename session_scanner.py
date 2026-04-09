@@ -49,10 +49,10 @@ def is_pid_alive(pid: int) -> bool:
 def encode_cwd(cwd: str) -> str:
     """Encode a cwd path to the directory name format used by Claude Code.
 
-    Replaces path separators, colons, and underscores with dashes.
+    Replaces path separators, colons, underscores, and spaces with dashes.
     E.g. 'C:\\Users\\erwan\\my_project' -> 'C--Users-erwan-my-project'
     """
-    return re.sub(r'[\\/:_]', '-', cwd).rstrip('-')
+    return re.sub(r'[\\/:_ ]', '-', cwd).rstrip('-')
 
 
 def scan_sessions(
