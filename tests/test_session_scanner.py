@@ -32,6 +32,11 @@ def test_encode_cwd_windows_path():
     assert encode_cwd(cwd) == "C--Users-erwan-my-project"
 
 
+def test_encode_cwd_windows_path_with_space():
+    cwd = "C:\\Users\\erwan\\my project"
+    assert encode_cwd(cwd) == "C--Users-erwan-my-project"
+
+
 def test_encode_cwd_unix_path():
     cwd = "/home/erwan/my_project"
     assert encode_cwd(cwd) == "-home-erwan-my-project"
