@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 )
 
 from poller import Poller, format_countdown, get_bar_color, compute_time_utilization
+from ping_poller import PingPoller
 
 BG = "#1a1a2e"
 TEXT = "#ffffff"
@@ -143,7 +144,7 @@ class VisualizerWindow(QWidget):
         self._build_ui()
         self._position_top_right()
         self._start_timers()
-        self._start_poller()
+        self._start_pollers()
 
     # ------------------------------------------------------------------
     # Window setup
@@ -178,7 +179,7 @@ class VisualizerWindow(QWidget):
 
         # --- Header ---
         header = QHBoxLayout()
-        title = QLabel("Claude Code · 5h Session")
+        title = QLabel("Claude Monitor")
         title.setStyleSheet(f"color: {TEXT}; font-size: 11px; font-weight: bold; background: transparent;")
         close_btn = QPushButton("×")
         close_btn.setFixedSize(20, 20)
@@ -190,6 +191,27 @@ class VisualizerWindow(QWidget):
         header.addStretch()
         header.addWidget(close_btn)
         root.addLayout(header)
+
+        # --- Ping row ---
+        ping_row = QHBoxLayout()
+        ping_row.setSpacing(8)
+        self._ping_dot = QLabel("●")
+        self._ping_dot.setStyleSheet(
+            f"color: {GREY}; font-size: 10px; background: transparent;"
+        )
+        self._ping_status = QLabel("---")
+        self._ping_status.setStyleSheet(
+            f"color: {GREY}; font-size: 11px; font-weight: bold; background: transparent;"
+        )
+        self._ping_latency = QLabel("")
+        self._ping_latency.setStyleSheet(
+            f"color: {GREY}; font-size: 9px; background: transparent;"
+        )
+        ping_row.addWidget(self._ping_dot)
+        ping_row.addWidget(self._ping_status)
+        ping_row.addWidget(self._ping_latency)
+        ping_row.addStretch()
+        root.addLayout(ping_row)
 
         # --- Tokens bar ---
         self._tokens_label = QLabel(f"Tokens — {self.SPINNER_FRAMES[0]}")
@@ -262,11 +284,15 @@ class VisualizerWindow(QWidget):
     # Poller
     # ------------------------------------------------------------------
 
-    def _start_poller(self) -> None:
+    def _start_pollers(self) -> None:
         self._poller = Poller()
         self._poller.data_ready.connect(self._on_data)
         self._poller.error.connect(self._on_error)
         self._poller.start()
+
+        self._ping_poller = PingPoller()
+        self._ping_poller.ping_ready.connect(self._on_ping)
+        self._ping_poller.start()
 
     def _on_data(self, utilization: float, reset_at: object) -> None:
         self._is_loading = False
@@ -302,6 +328,24 @@ class VisualizerWindow(QWidget):
             self._tokens_label.setStyleSheet(f"color: {FOOTER_COLOR}; font-size: 9px; background: transparent;")
             self._time_label.setText("")
 
+    def _on_ping(self, online: bool, latency: object) -> None:
+        if online:
+            color = "#00b894"
+            text = "ONLINE"
+            ms = f"{latency:.0f}ms" if latency is not None else ""
+        else:
+            color = "#d63031"
+            text = "OFFLINE"
+            ms = "---"
+        self._ping_dot.setStyleSheet(
+            f"color: {color}; font-size: 10px; background: transparent;"
+        )
+        self._ping_status.setText(text)
+        self._ping_status.setStyleSheet(
+            f"color: {color}; font-size: 11px; font-weight: bold; background: transparent;"
+        )
+        self._ping_latency.setText(ms)
+
     # ------------------------------------------------------------------
     # Mouse: drag + right-click to quit
     # ------------------------------------------------------------------
@@ -323,6 +367,8 @@ class VisualizerWindow(QWidget):
     def closeEvent(self, event) -> None:
         self._poller.stop()
         self._poller.wait(2000)
+        self._ping_poller.stop()
+        self._ping_poller.wait(2000)
         event.accept()
 
 
