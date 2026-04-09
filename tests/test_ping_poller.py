@@ -1,4 +1,3 @@
-import re
 import pytest
 
 from ping_poller import LATENCY_RE, ping
