@@ -375,11 +375,11 @@ class VisualizerWindow(QWidget):
             return
 
         # Section header
-        header = QLabel(f"Context · {len(sessions)} session{'s' if len(sessions) != 1 else ''}")
+        count = len(sessions)
+        header = QLabel(f"CONTEXT · {count} SESSION{'S' if count != 1 else ''}")
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setStyleSheet(
-            f"color: {GREY}; font-size: 9px; background: transparent; "
-            "text-transform: uppercase; letter-spacing: 0.5px;"
+            f"color: {GREY}; font-size: 9px; background: transparent;"
         )
         self._context_layout.addWidget(header)
 
