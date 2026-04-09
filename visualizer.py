@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 
 from poller import Poller, format_countdown, get_bar_color, compute_time_utilization
 from ping_poller import PingPoller
+from session_scanner import SessionScanner
 
 BG = "#1a1a2e"
 TEXT = "#ffffff"
@@ -157,7 +158,8 @@ class VisualizerWindow(QWidget):
             | Qt.WindowType.Tool  # excluded from taskbar
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(WIDTH, HEIGHT)
+        self.setFixedWidth(WIDTH)
+        self.setMinimumHeight(HEIGHT)
 
     def paintEvent(self, _event) -> None:
         """Draw the dark rounded rectangle background."""
@@ -227,6 +229,15 @@ class VisualizerWindow(QWidget):
         self._time_bar = ColorBar()
         root.addWidget(self._time_bar)
 
+        # --- Context section (auto-collapse) ---
+        self._context_container = QWidget()
+        self._context_container.setStyleSheet("background: transparent;")
+        self._context_layout = QVBoxLayout(self._context_container)
+        self._context_layout.setContentsMargins(0, 0, 0, 0)
+        self._context_layout.setSpacing(4)
+        self._context_container.setVisible(False)
+        root.addWidget(self._context_container)
+
         # --- Footer ---
         footer = QHBoxLayout()
         self._updated_label = QLabel("")
@@ -294,6 +305,10 @@ class VisualizerWindow(QWidget):
         self._ping_poller.ping_ready.connect(self._on_ping)
         self._ping_poller.start()
 
+        self._session_scanner = SessionScanner()
+        self._session_scanner.sessions_ready.connect(self._on_sessions)
+        self._session_scanner.start()
+
     def _on_data(self, utilization: float, reset_at: object) -> None:
         self._is_loading = False
         self._reset_at = reset_at  # type: ignore[assignment]
@@ -346,6 +361,59 @@ class VisualizerWindow(QWidget):
         )
         self._ping_latency.setText(ms)
 
+    def _on_sessions(self, sessions: list) -> None:
+        # Clear existing context widgets
+        while self._context_layout.count():
+            item = self._context_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+        if not sessions:
+            self._context_container.setVisible(False)
+            self.adjustSize()
+            return
+
+        # Section header
+        header = QLabel(f"Context · {len(sessions)} session{'s' if len(sessions) != 1 else ''}")
+        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header.setStyleSheet(
+            f"color: {GREY}; font-size: 9px; background: transparent; "
+            "text-transform: uppercase; letter-spacing: 0.5px;"
+        )
+        self._context_layout.addWidget(header)
+
+        # Per-session rows
+        for project_name, model, fill_pct in sessions:
+            # Strip model prefix for display (e.g. "claude-opus-4-6" -> "opus")
+            short_model = model.replace("claude-", "").split("-")[0]
+            pct_text = f"{int(fill_pct * 100)}%"
+
+            label_row = QHBoxLayout()
+            name_label = QLabel(f"{project_name} · {short_model}")
+            name_label.setStyleSheet(
+                f"color: {MUTED}; font-size: 10px; background: transparent;"
+            )
+            pct_label = QLabel(pct_text)
+            pct_label.setStyleSheet(
+                f"color: {MUTED}; font-size: 10px; background: transparent;"
+            )
+            label_row.addWidget(name_label)
+            label_row.addStretch()
+            label_row.addWidget(pct_label)
+
+            label_widget = QWidget()
+            label_widget.setStyleSheet("background: transparent;")
+            label_widget.setLayout(label_row)
+            self._context_layout.addWidget(label_widget)
+
+            bar = ContextBar()
+            bar.set_value(fill_pct)
+            self._context_layout.addWidget(bar)
+
+        self._context_container.setVisible(True)
+        self.adjustSize()
+
     # ------------------------------------------------------------------
     # Mouse: drag + right-click to quit
     # ------------------------------------------------------------------
@@ -369,6 +437,8 @@ class VisualizerWindow(QWidget):
         self._poller.wait(2000)
         self._ping_poller.stop()
         self._ping_poller.wait(2000)
+        self._session_scanner.stop()
+        self._session_scanner.wait(2000)
         event.accept()
 
 
