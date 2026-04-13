@@ -174,7 +174,7 @@ def compute_fill_pct(model: str, total_input_tokens: int) -> float:
 class SessionScanner(QThread):
     """Background thread that scans for active Claude Code sessions."""
 
-    # Emitted each cycle: list of (project_name, model, fill_pct) tuples
+    # Emitted each cycle: list of (project_name, model, fill_pct, is_waiting) tuples
     sessions_ready = pyqtSignal(list)
 
     def __init__(
@@ -191,7 +191,7 @@ class SessionScanner(QThread):
 
     def run(self) -> None:
         while not self._stop_event.is_set():
-            results: List[Tuple[str, str, float]] = []
+            results: List[Tuple[str, str, float, bool]] = []
             for _pid, session_id, cwd in scan_sessions(self._sessions_dir):
                 usage = read_context_usage(self._projects_dir, cwd, session_id)
                 if usage is None:
@@ -199,7 +199,10 @@ class SessionScanner(QThread):
                 model, total_tokens = usage
                 fill = compute_fill_pct(model, total_tokens)
                 project_name = Path(cwd).name
-                results.append((project_name, model, fill))
+                is_waiting = read_session_status(
+                    self._projects_dir, cwd, session_id
+                )
+                results.append((project_name, model, fill, is_waiting))
             self.sessions_ready.emit(results)
 
             for _ in range(self._interval):
