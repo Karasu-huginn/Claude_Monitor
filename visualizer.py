@@ -384,19 +384,20 @@ class VisualizerWindow(QWidget):
         self._context_layout.addWidget(header)
 
         # Per-session rows
-        for project_name, model, fill_pct in sessions:
+        for project_name, model, fill_pct, is_waiting in sessions:
             # Strip model prefix for display (e.g. "claude-opus-4-6" -> "opus")
             short_model = model.replace("claude-", "").split("-")[0]
             pct_text = f"{int(fill_pct * 100)}%"
+            label_color = "#00b894" if is_waiting else MUTED
 
             label_row = QHBoxLayout()
             name_label = QLabel(f"{project_name} · {short_model}")
             name_label.setStyleSheet(
-                f"color: {MUTED}; font-size: 10px; background: transparent;"
+                f"color: {label_color}; font-size: 10px; background: transparent;"
             )
             pct_label = QLabel(pct_text)
             pct_label.setStyleSheet(
-                f"color: {MUTED}; font-size: 10px; background: transparent;"
+                f"color: {label_color}; font-size: 10px; background: transparent;"
             )
             label_row.addWidget(name_label)
             label_row.addStretch()
