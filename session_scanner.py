@@ -18,11 +18,11 @@ SESSIONS_DIR = CLAUDE_DIR / "sessions"
 PROJECTS_DIR = CLAUDE_DIR / "projects"
 
 MODEL_CONTEXT_LIMITS = {
-    "claude-opus-4-6": 200_000,
-    "claude-sonnet-4-6": 200_000,
-    "claude-haiku-4-5": 200_000,
+    "claude-opus-4-6": 1_000_000,
+    "claude-sonnet-4-6": 1_000_000,
+    "claude-haiku-4-5": 1_000_000,
 }
-DEFAULT_CONTEXT_LIMIT = 200_000
+DEFAULT_CONTEXT_LIMIT = 1_000_000
 
 SCAN_INTERVAL = 15  # seconds between scans
 
@@ -72,6 +72,47 @@ def scan_sessions(
         except (json.JSONDecodeError, KeyError, OSError):
             continue
     return results
+
+
+def read_session_status(
+    projects_dir: Path,
+    cwd: str,
+    session_id: str,
+) -> bool:
+    """Check if a session is waiting for user instructions.
+
+    Returns True if the last assistant message has stop_reason='end_turn',
+    meaning Claude finished its turn and is waiting for input.
+    Returns False on any error or if the session appears to be working.
+    """
+    encoded = encode_cwd(cwd)
+    jsonl_path = projects_dir / encoded / f"{session_id}.jsonl"
+    if not jsonl_path.is_file():
+        return False
+
+    try:
+        file_size = jsonl_path.stat().st_size
+        read_size = min(file_size, 65536)
+        with open(jsonl_path, "r", encoding="utf-8") as f:
+            if file_size > read_size:
+                f.seek(file_size - read_size)
+                f.readline()  # skip partial line
+            lines = f.readlines()
+    except OSError:
+        return False
+
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if entry.get("type") == "assistant":
+            return entry.get("message", {}).get("stop_reason") == "end_turn"
+
+    return False
 
 
 def read_context_usage(

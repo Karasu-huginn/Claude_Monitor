@@ -9,6 +9,7 @@ from session_scanner import (
     encode_cwd,
     scan_sessions,
     read_context_usage,
+    read_session_status,
     compute_fill_pct,
     MODEL_CONTEXT_LIMITS,
 )
@@ -138,14 +139,97 @@ def test_read_context_usage_returns_none_for_no_usage_entries(tmp_path):
 # --- compute_fill_pct ---
 
 def test_compute_fill_pct_known_model():
-    # 80000 / 200000 = 0.4
-    assert compute_fill_pct("claude-opus-4-6", 80000) == pytest.approx(0.4)
+    # 400000 / 1000000 = 0.4
+    assert compute_fill_pct("claude-opus-4-6", 400000) == pytest.approx(0.4)
 
 
 def test_compute_fill_pct_unknown_model_uses_default():
-    # Unknown model falls back to 200000
-    assert compute_fill_pct("claude-unknown-99", 100000) == pytest.approx(0.5)
+    # Unknown model falls back to 1000000
+    assert compute_fill_pct("claude-unknown-99", 500000) == pytest.approx(0.5)
 
 
 def test_compute_fill_pct_clamps_at_1():
-    assert compute_fill_pct("claude-sonnet-4-6", 999999) == pytest.approx(1.0)
+    assert compute_fill_pct("claude-sonnet-4-6", 2_000_000) == pytest.approx(1.0)
+
+
+# --- read_session_status ---
+
+def test_read_session_status_end_turn_returns_true(tmp_path):
+    """Session whose last assistant message has stop_reason=end_turn is waiting."""
+    projects_dir = tmp_path / "projects"
+    project_dir = projects_dir / "C--Users-erwan-my-project"
+    project_dir.mkdir(parents=True)
+
+    jsonl_file = project_dir / "abc-123.jsonl"
+    lines = [
+        json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}}),
+        json.dumps({
+            "type": "assistant",
+            "message": {
+                "model": "claude-opus-4-6",
+                "role": "assistant",
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 100, "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 0, "output_tokens": 50},
+            },
+        }),
+    ]
+    jsonl_file.write_text("\n".join(lines) + "\n")
+
+    assert read_session_status(projects_dir, "C:\\Users\\erwan\\my_project", "abc-123") is True
+
+
+def test_read_session_status_tool_use_returns_false(tmp_path):
+    """Session whose last assistant message has stop_reason=tool_use is working."""
+    projects_dir = tmp_path / "projects"
+    project_dir = projects_dir / "C--Users-erwan-my-project"
+    project_dir.mkdir(parents=True)
+
+    jsonl_file = project_dir / "abc-123.jsonl"
+    lines = [
+        json.dumps({
+            "type": "assistant",
+            "message": {
+                "model": "claude-opus-4-6",
+                "role": "assistant",
+                "stop_reason": "tool_use",
+                "usage": {"input_tokens": 100, "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 0, "output_tokens": 50},
+            },
+        }),
+        json.dumps({"type": "user", "message": {"role": "user", "content": "tool result"}}),
+    ]
+    jsonl_file.write_text("\n".join(lines) + "\n")
+
+    assert read_session_status(projects_dir, "C:\\Users\\erwan\\my_project", "abc-123") is False
+
+
+def test_read_session_status_missing_file_returns_false(tmp_path):
+    """Missing JSONL file defaults to not-waiting (working)."""
+    assert read_session_status(tmp_path, "C:\\no\\such", "bad-id") is False
+
+
+def test_read_session_status_no_assistant_message_returns_false(tmp_path):
+    """JSONL with only user messages defaults to not-waiting."""
+    projects_dir = tmp_path / "projects"
+    project_dir = projects_dir / "C--Users-erwan-my-project"
+    project_dir.mkdir(parents=True)
+
+    jsonl_file = project_dir / "abc-123.jsonl"
+    jsonl_file.write_text(
+        json.dumps({"type": "user", "message": {"role": "user", "content": "hi"}}) + "\n"
+    )
+
+    assert read_session_status(projects_dir, "C:\\Users\\erwan\\my_project", "abc-123") is False
+
+
+def test_read_session_status_empty_file_returns_false(tmp_path):
+    """Empty JSONL file defaults to not-waiting."""
+    projects_dir = tmp_path / "projects"
+    project_dir = projects_dir / "C--Users-erwan-my-project"
+    project_dir.mkdir(parents=True)
+
+    jsonl_file = project_dir / "abc-123.jsonl"
+    jsonl_file.write_text("")
+
+    assert read_session_status(projects_dir, "C:\\Users\\erwan\\my_project", "abc-123") is False
