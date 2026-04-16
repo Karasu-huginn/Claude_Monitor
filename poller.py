@@ -93,7 +93,7 @@ class Poller(QThread):
                         "Authorization": f"Bearer {token}",
                         "anthropic-beta": "oauth-2025-04-20",
                         "Content-Type": "application/json",
-                        "User-Agent": "claude-tokens-visualizer/1.0",
+                        "User-Agent": "claude-monitor/1.0",
                     },
                     timeout=10,
                 )

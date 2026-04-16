@@ -34,7 +34,7 @@ def create_shortcut(shortcut_path: Path, pythonw: Path, script: Path, workdir: P
         f'$s.TargetPath = "{pythonw}"; '
         f'$s.Arguments = \'"{script}"\'; '
         f'$s.WorkingDirectory = "{workdir}"; '
-        f'$s.Description = "Claude Code token usage visualizer"; '
+        f'$s.Description = "Claude Monitor"; '
         f'$s.Save()'
     )
     result = subprocess.run(
@@ -52,7 +52,7 @@ def main() -> None:
         start_menu = get_start_menu()
         script = Path(__file__).resolve().parent / "visualizer.py"
         workdir = script.parent
-        shortcut = start_menu / "Claude Tokens Visualizer.lnk"
+        shortcut = start_menu / "Claude Monitor.lnk"
         create_shortcut(shortcut, pythonw, script, workdir)
         print(f"Shortcut created: {shortcut}")
     except Exception as e:
