@@ -5,7 +5,7 @@ import sys
 from datetime import datetime
 from typing import Optional
 
-from PyQt6.QtCore import Qt, QTimer, QPoint, QRect
+from PyQt6.QtCore import Qt, QTimer, QPoint, QRect, QSettings, pyqtSignal
 from PyQt6.QtGui import QPainter, QColor
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel,
@@ -126,6 +126,18 @@ class ContextBar(QWidget):
         painter.drawLine(mark_x, 1, mark_x, rect.height() - 1)
 
         painter.end()
+
+
+class _ClickableLabel(QLabel):
+    """QLabel that emits `clicked` on left mouse press."""
+
+    clicked = pyqtSignal()
+
+    def mousePressEvent(self, event) -> None:
+        """Emit `clicked` for left-button presses, then defer to base behavior."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
 
 
 class VisualizerWindow(QWidget):
