@@ -153,6 +153,12 @@ class VisualizerWindow(QWidget):
         self._dot_visible: bool = True
         self._is_loading: bool = True
 
+        settings = QSettings("ClaudeMonitor", "Visualizer")
+        self._context_expanded: bool = settings.value(
+            "context_section_expanded", True, type=bool
+        )
+        self._context_session_count: int = 0
+
         self._setup_window()
         self._build_ui()
         self._position_top_right()
@@ -241,12 +247,29 @@ class VisualizerWindow(QWidget):
         self._time_bar = ColorBar()
         root.addWidget(self._time_bar)
 
-        # --- Context section (auto-collapse) ---
+        # --- Context section (user-collapsable; auto-hides when no sessions) ---
         self._context_container = QWidget()
         self._context_container.setStyleSheet("background: transparent;")
-        self._context_layout = QVBoxLayout(self._context_container)
-        self._context_layout.setContentsMargins(0, 0, 0, 0)
-        self._context_layout.setSpacing(4)
+        context_outer_layout = QVBoxLayout(self._context_container)
+        context_outer_layout.setContentsMargins(0, 0, 0, 0)
+        context_outer_layout.setSpacing(4)
+
+        self._context_header = _ClickableLabel("")
+        self._context_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._context_header.setStyleSheet(
+            f"color: {GREY}; font-size: 9px; background: transparent;"
+        )
+        self._context_header.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._context_header.clicked.connect(self._toggle_context_section)
+        context_outer_layout.addWidget(self._context_header)
+
+        self._context_rows_container = QWidget()
+        self._context_rows_container.setStyleSheet("background: transparent;")
+        self._context_rows_layout = QVBoxLayout(self._context_rows_container)
+        self._context_rows_layout.setContentsMargins(0, 0, 0, 0)
+        self._context_rows_layout.setSpacing(4)
+        context_outer_layout.addWidget(self._context_rows_container)
+
         self._context_container.setVisible(False)
         root.addWidget(self._context_container)
 
@@ -373,10 +396,34 @@ class VisualizerWindow(QWidget):
         )
         self._ping_latency.setText(ms)
 
+    def _toggle_context_section(self) -> None:
+        """Flip the context section's expanded state and persist the choice."""
+        self._context_expanded = not self._context_expanded
+        QSettings("ClaudeMonitor", "Visualizer").setValue(
+            "context_section_expanded", self._context_expanded
+        )
+        self._apply_context_expanded_state()
+
+    def _apply_context_expanded_state(self) -> None:
+        """Sync header chevron and rows visibility with `_context_expanded`."""
+        self._refresh_context_header()
+        self._context_rows_container.setVisible(self._context_expanded)
+        self.adjustSize()
+
+    def _refresh_context_header(self) -> None:
+        """Rewrite the context header text from current chevron + session count."""
+        chevron = "▾" if self._context_expanded else "▸"
+        count = self._context_session_count
+        plural = "S" if count != 1 else ""
+        self._context_header.setText(
+            f"{chevron} CONTEXT · {count} SESSION{plural}"
+        )
+
     def _on_sessions(self, sessions: list) -> None:
-        # Clear existing context widgets
-        while self._context_layout.count():
-            item = self._context_layout.takeAt(0)
+        """Rebuild per-session rows; auto-hide if empty; honor expanded preference."""
+        # Clear existing per-session row widgets (header is persistent and skipped)
+        while self._context_rows_layout.count():
+            item = self._context_rows_layout.takeAt(0)
             widget = item.widget()
             if widget:
                 widget.deleteLater()
@@ -386,14 +433,7 @@ class VisualizerWindow(QWidget):
             self.adjustSize()
             return
 
-        # Section header
-        count = len(sessions)
-        header = QLabel(f"CONTEXT · {count} SESSION{'S' if count != 1 else ''}")
-        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header.setStyleSheet(
-            f"color: {GREY}; font-size: 9px; background: transparent;"
-        )
-        self._context_layout.addWidget(header)
+        self._context_session_count = len(sessions)
 
         # Per-session rows
         for project_name, model, fill_pct, is_waiting in sessions:
@@ -418,14 +458,14 @@ class VisualizerWindow(QWidget):
             label_widget = QWidget()
             label_widget.setStyleSheet("background: transparent;")
             label_widget.setLayout(label_row)
-            self._context_layout.addWidget(label_widget)
+            self._context_rows_layout.addWidget(label_widget)
 
             bar = ContextBar()
             bar.set_value(fill_pct)
-            self._context_layout.addWidget(bar)
+            self._context_rows_layout.addWidget(bar)
 
         self._context_container.setVisible(True)
-        self.adjustSize()
+        self._apply_context_expanded_state()
 
     # ------------------------------------------------------------------
     # Mouse: drag + right-click to quit
