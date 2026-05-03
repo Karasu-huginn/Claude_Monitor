@@ -154,7 +154,7 @@ class VisualizerWindow(QWidget):
         self._is_loading: bool = True
 
         settings = QSettings("ClaudeMonitor", "Visualizer")
-        self._context_expanded: bool = settings.value(
+        self._is_context_expanded: bool = settings.value(
             "context_section_expanded", True, type=bool
         )
         self._context_session_count: int = 0
@@ -398,21 +398,21 @@ class VisualizerWindow(QWidget):
 
     def _toggle_context_section(self) -> None:
         """Flip the context section's expanded state and persist the choice."""
-        self._context_expanded = not self._context_expanded
+        self._is_context_expanded = not self._is_context_expanded
         QSettings("ClaudeMonitor", "Visualizer").setValue(
-            "context_section_expanded", self._context_expanded
+            "context_section_expanded", self._is_context_expanded
         )
         self._apply_context_expanded_state()
 
     def _apply_context_expanded_state(self) -> None:
-        """Sync header chevron and rows visibility with `_context_expanded`."""
+        """Sync header chevron and rows visibility with `_is_context_expanded`."""
         self._refresh_context_header()
-        self._context_rows_container.setVisible(self._context_expanded)
+        self._context_rows_container.setVisible(self._is_context_expanded)
         self.adjustSize()
 
     def _refresh_context_header(self) -> None:
         """Rewrite the context header text from current chevron + session count."""
-        chevron = "▾" if self._context_expanded else "▸"
+        chevron = "▾" if self._is_context_expanded else "▸"
         count = self._context_session_count
         plural = "S" if count != 1 else ""
         self._context_header.setText(
