@@ -408,6 +408,15 @@ class VisualizerWindow(QWidget):
         """Sync header chevron and rows visibility with `_is_context_expanded`."""
         self._refresh_context_header()
         self._context_rows_container.setVisible(self._is_context_expanded)
+        # Defer to next event-loop tick so Qt processes the LayoutRequest from
+        # setVisible() before we read sizeHint. Without the defer, frameless +
+        # translucent top-level Qt widgets on Windows fail to shrink (Qt only
+        # auto-grows; shrinking needs an explicit, well-timed resize).
+        QTimer.singleShot(0, self._fit_window_to_contents)
+
+    def _fit_window_to_contents(self) -> None:
+        """Recompute root layout and resize the window to its current sizeHint."""
+        self.layout().activate()
         self.adjustSize()
 
     def _refresh_context_header(self) -> None:
@@ -430,7 +439,7 @@ class VisualizerWindow(QWidget):
 
         if not sessions:
             self._context_container.setVisible(False)
-            self.adjustSize()
+            QTimer.singleShot(0, self._fit_window_to_contents)
             return
 
         self._context_session_count = len(sessions)
